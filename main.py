@@ -24,6 +24,7 @@ from modules.tts import speak
 from modules.stt import listen
 from modules.wake_word import wait_for_wake_word
 from modules.agent import handle_action
+from modules.telegram_bot import start_telegram_bot
 from modules.avatar import set_expression, reset_expression, start_idle
 from modules.dashboard import start_dashboard, update_status, log_message
 
