@@ -24,8 +24,8 @@ from modules.tts import speak
 from modules.stt import listen
 from modules.wake_word import wait_for_wake_word
 from modules.agent import handle_action
-from modules.telegram_bot import start_telegram_bot
 from modules.avatar import set_expression, reset_expression, start_idle
+from modules.dashboard import start_dashboard, update_status, log_message
 
 # ==================== Global State ====================
 
@@ -160,9 +160,11 @@ def active_mode(history):
     global running
     from modules.avatar import set_sleeping
     set_sleeping(False)
+    update_status("Speaking")
     speak("Hmm? You called~?", "curious")
 
     while running:
+        update_status("Listening")
         user_input = listen()
 
         if not user_input:
@@ -183,6 +185,7 @@ def active_mode(history):
             return history
 
         # Get LLM response
+        update_status("Thinking")
         response, history = chat(user_input, history)
         print(f"Cyra [{response['emotion']}]: {response['response']}\n")
 
@@ -196,6 +199,7 @@ def active_mode(history):
 
         # Show emotion on avatar and speak
         set_expression(response['emotion'])
+        update_status("Speaking")
         speak(response['response'], response['emotion'])
         reset_expression()
 
@@ -233,6 +237,14 @@ def main():
 
     # Start Telegram bot
     start_telegram_bot()
+
+    # Start Dashboard
+    from modules.dashboard import update_metrics
+    import webbrowser
+    start_dashboard()
+    time.sleep(2) # Wait for server to stabilize
+    update_metrics()
+    webbrowser.open("http://localhost:5000")
 
     # Start idle animation
     start_idle()

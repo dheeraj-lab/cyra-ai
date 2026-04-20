@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyra AI Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="nebula"></div>
+    
+    <div class="main-container">
+        <!-- Left: Chat Log -->
+        <div class="side-panel chat-panel">
+            <h2 class="panel-title">Conversation</h2>
+            <div id="chat-log" class="scrolling-log">
+                <div class="log-entry system">Cyra Dashboard Initialized...</div>
+            </div>
+            <div class="status-bar">
+                <span id="cyra-status" class="status listening">Listening...</span>
+            </div>
+        </div>
+
+        <!-- Center: Avatar Area -->
+        <div class="center-stage">
+            <div id="avatar-container">
+                <!-- Avatar will be rendered here via Three.js in Phase 2 -->
+                <div class="avatar-placeholder">
+                    <div class="pulse-ring"></div>
+                    <img src="/static/cyra_core.png" alt="Cyra Core" class="core-logo">
+                </div>
+            </div>
+            <div id="subtitle-box" class="subtitles">
+                <p id="current-text"></p>
+            </div>
+        </div>
+
+        <!-- Right: Stats Panel -->
+        <div class="side-panel stats-panel">
+            <h2 class="panel-title">System Metrics</h2>
+            
+            <div class="stat-item">
+                <label>Groq (Llama 3.3)</label>
+                <div class="progress-container">
+                    <div id="groq-bar" class="progress-bar purple" style="width: 0%"></div>
+                </div>
+                <span id="groq-val">0 / 500k</span>
+            </div>
+
+            <div class="stat-item">
+                <label>ElevenLabs</label>
+                <div class="progress-container">
+                    <div id="eleven-bar" class="progress-bar pink" style="width: 0%"></div>
+                </div>
+                <span id="eleven-val">0 / 10k</span>
+            </div>
+
+            <div class="stat-item">
+                <label>Vision Tasks</label>
+                <div class="stat-value" id="vision-val">0</div>
+            </div>
+
+            <div class="stat-item">
+                <label>STT Requests</label>
+                <div class="stat-value" id="stt-val">0</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

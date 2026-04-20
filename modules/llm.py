@@ -11,6 +11,7 @@ from modules.mood import get_mood_context, update_mood
 from dotenv import load_dotenv
 import os
 from modules.config import get
+from modules.dashboard import log_message, update_metrics
 
 load_dotenv()
 
@@ -140,6 +141,7 @@ def chat(user_input, conversation_history):
     })
 
     messages = [{"role": "system", "content": system}] + conversation_history
+    log_message("user", user_input)
 
     try:
         raw = call_groq(messages, "llama-3.3-70b-versatile")
@@ -176,5 +178,7 @@ def chat(user_input, conversation_history):
     save_memory(f"User said: {user_input}")
     save_memory(f"Cyra said: {parsed['response']}")
     update_mood("positive")
+    log_message("cyra", parsed['response'])
+    update_metrics()
 
     return parsed, conversation_history
