@@ -1,0 +1,7 @@
+venv/
+.env
+memories/
+__pycache__/
+kokoro_model/
+*.pth
+*.onnx
