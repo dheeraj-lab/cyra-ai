@@ -51,8 +51,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if response.get("action") and response["action"] not in ["see_screen", "see_webcam"]:
         from modules.agent import handle_action
         result = handle_action(response["action"], response.get("params"))
+        
         if result:
-            await update.message.reply_text(f"✅ {result}")
+            if result.startswith("SEND_FILE:"):
+                file_to_send = result.replace("SEND_FILE:", "").strip()
+                # Use a dummy context/update to call our command logic
+                class DummyContext:
+                    def __init__(self, args): self.args = args
+                await sendfile_command(update, DummyContext(file_to_send.split()))
+            elif result.startswith("SEND_FOLDER:"):
+                folder_to_send = result.replace("SEND_FOLDER:", "").strip()
+                class DummyContext:
+                    def __init__(self, args): self.args = args
+                await sendfolder_command(update, DummyContext(folder_to_send.split()))
+            else:
+                await update.message.reply_text(f"✅ {result}")
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming photos and save as background.png."""
@@ -82,6 +95,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 📰 /briefing — daily briefing
 📁 /sendfile [filename] — PC se file bhejo
 📂 /sendfolder [folder] — folder ki files bhejo
+📤 /get [path] — exact path se file bhejo
+📂 /open [folder] — PC pe folder kholo
 🔒 /lockpc — PC lock karo
 ⚠️ /shutdown — PC band karo
 🔄 /restart — PC restart karo
@@ -95,6 +110,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🖥 /processes — running apps
 💻 /run [command] — terminal command run karo
 📧 /email [to]|[subject]|[body] — email bhejo
+🖥 /maximize [title] — window maximize karo
+❌ /close [title] — window band karo
 """
     await update.message.reply_text(help_text)
 
@@ -217,6 +234,17 @@ async def sendfile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Kaunsi file chahiye? /sendfile [filename]")
         return
 
+    # Check if absolute path
+    if os.path.exists(filename) and os.path.isfile(filename):
+        await update.message.reply_text(f"📤 Bhej rahi hoon: {os.path.basename(filename)}")
+        try:
+            with open(filename, "rb") as f:
+                await update.message.reply_document(document=f, filename=os.path.basename(filename))
+            return
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error: {str(e)}")
+            return
+
     await update.message.reply_text(f"🔍 '{filename}' dhundh rahi hoon...")
 
     search_paths = [
@@ -232,10 +260,15 @@ async def sendfile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for path in search_paths:
         if not os.path.exists(path):
             continue
+        # Check if filename is actually one of these paths
+        if filename.lower() in path.lower() and os.path.isfile(path):
+             found_files.append(path)
+             
         for root, dirs, files in os.walk(path):
             for file in files:
                 if filename.lower() in file.lower():
                     found_files.append(os.path.join(root, file))
+            if len(found_files) > 10: break # Limit search
 
     if not found_files:
         await update.message.reply_text(f"❌ '{filename}' nahi mila!")
@@ -285,54 +318,105 @@ async def sendfolder_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("Kaunsa folder chahiye? /sendfolder [folder name]")
         return
 
-    search_paths = [
-        os.path.expanduser("~") + r"\Desktop",
-        os.path.expanduser("~") + r"\Documents",
-        os.path.expanduser("~") + r"\Downloads",
-    ]
+    # Check common folders directly
+    common = {
+        "downloads": os.path.expanduser("~") + r"\Downloads",
+        "desktop": os.path.expanduser("~") + r"\Desktop",
+        "documents": os.path.expanduser("~") + r"\Documents",
+        "pictures": os.path.expanduser("~") + r"\Pictures",
+        "videos": os.path.expanduser("~") + r"\Videos",
+        "music": os.path.expanduser("~") + r"\Music",
+    }
 
     found_folder = None
-    for path in search_paths:
-        if not os.path.exists(path):
-            continue
-        for root, dirs, files in os.walk(path):
-            for d in dirs:
-                if folder_name.lower() in d.lower():
-                    found_folder = os.path.join(root, d)
+    if folder_name.lower() in common:
+        found_folder = common[folder_name.lower()]
+    elif os.path.exists(folder_name) and os.path.isdir(folder_name):
+        found_folder = folder_name
+    else:
+        search_paths = [
+            os.path.expanduser("~") + r"\Desktop",
+            os.path.expanduser("~") + r"\Documents",
+            os.path.expanduser("~") + r"\Downloads",
+        ]
+
+        for path in search_paths:
+            if not os.path.exists(path):
+                continue
+            for root, dirs, files in os.walk(path):
+                for d in dirs:
+                    if folder_name.lower() in d.lower():
+                        found_folder = os.path.join(root, d)
+                        break
+                if found_folder:
                     break
             if found_folder:
                 break
-        if found_folder:
-            break
 
     if not found_folder:
         await update.message.reply_text(f"❌ '{folder_name}' folder nahi mila!")
         return
 
-    files = os.listdir(found_folder)
-    if not files:
-        await update.message.reply_text("Folder empty hai!")
+    try:
+        files = os.listdir(found_folder)
+        if not files:
+            await update.message.reply_text("Folder empty hai!")
+            return
+
+        await update.message.reply_text(f"📁 {len(files)} files mil gayi — pehli kuch bhej rahi hoon!")
+
+        sent = 0
+        for file in files:
+            if sent >= 5: break
+            file_path = os.path.join(found_folder, file)
+            if os.path.isfile(file_path):
+                try:
+                    file_size = os.path.getsize(file_path)
+                    if file_size < 50 * 1024 * 1024:
+                        with open(file_path, "rb") as f:
+                            await update.message.reply_document(
+                                document=f,
+                                filename=file
+                            )
+                        sent += 1
+                except:
+                    pass
+        await update.message.reply_text(f"✅ {sent} files send kar di!")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error access karne mein: {str(e)}")
+
+async def get_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Directly send a file from an absolute path."""
+    path = " ".join(context.args)
+    if not path:
+        await update.message.reply_text("Path toh batao! /get [C:\\path\\to\\file.txt]")
+        return
+    
+    if not os.path.exists(path):
+        await update.message.reply_text("❌ Path nahi mila!")
+        return
+    
+    if os.path.isdir(path):
+        await update.message.reply_text("📁 Yeh ek directory hai, use /sendfolder instead!")
         return
 
-    await update.message.reply_text(f"📁 {len(files)} files mil gayi — pehli kuch bhej rahi hoon!")
+    try:
+        await update.message.reply_text(f"📤 Bhej rahi hoon...")
+        with open(path, "rb") as f:
+            await update.message.reply_document(document=f, filename=os.path.basename(path))
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {str(e)}")
 
-    sent = 0
-    for file in files[:5]:
-        file_path = os.path.join(found_folder, file)
-        if os.path.isfile(file_path):
-            try:
-                file_size = os.path.getsize(file_path)
-                if file_size < 50 * 1024 * 1024:
-                    with open(file_path, "rb") as f:
-                        await update.message.reply_document(
-                            document=f,
-                            filename=file
-                        )
-                    sent += 1
-            except:
-                pass
-
-    await update.message.reply_text(f"✅ {sent} files send kar di!")
+async def open_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Open a folder on the PC."""
+    from modules.agent import handle_action
+    folder = " ".join(context.args)
+    if not folder:
+        await update.message.reply_text("Kaunsa folder kholu? /open [folder name]")
+        return
+    
+    result = handle_action("open_folder", folder)
+    await update.message.reply_text(f"📂 {result}")
 
 async def alarm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from modules.agent import set_alarm
@@ -389,12 +473,13 @@ async def mouse_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("🖱 Double click kar diya!")
         elif action == "scroll":
             direction = args[1].lower() if len(args) > 1 else "up"
+            clicks = int(args[2]) if len(args) > 2 and args[2].isdigit() else 10
             if direction == "up":
-                pyautogui.scroll(3)
-                await update.message.reply_text("🖱 Scroll up kar diya!")
+                pyautogui.scroll(clicks * 100)
+                await update.message.reply_text(f"🖱 {clicks} steps upar scroll kar diya!")
             else:
-                pyautogui.scroll(-3)
-                await update.message.reply_text("🖱 Scroll down kar diya!")
+                pyautogui.scroll(-clicks * 100)
+                await update.message.reply_text(f"🖱 {clicks} steps neeche scroll kar diya!")
         else:
             await update.message.reply_text("Command nahi pata!")
     except Exception as e:
@@ -514,6 +599,18 @@ async def setbg_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = handle_action("set_background", "background.png")
     await update.message.reply_text(f"🖼 {result}")
 
+async def maximize_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from modules.agent import handle_action
+    title = " ".join(context.args)
+    result = handle_action("maximize_window", title if title else None)
+    await update.message.reply_text(f"🖥 {result}")
+
+async def close_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from modules.agent import handle_action
+    title = " ".join(context.args)
+    result = handle_action("close_window", title if title else None)
+    await update.message.reply_text(f"❌ {result}")
+
 def run_bot():
     import nest_asyncio
     nest_asyncio.apply()
@@ -541,6 +638,8 @@ def run_bot():
         application.add_handler(CommandHandler("shutdown", shutdown_command))
         application.add_handler(CommandHandler("restart", restart_command))
         application.add_handler(CommandHandler("sendfolder", sendfolder_command))
+        application.add_handler(CommandHandler("get", get_command))
+        application.add_handler(CommandHandler("open", open_command))
         application.add_handler(CommandHandler("livescreenshot", livescreenshot_command))
         application.add_handler(CommandHandler("remotemsg", remotemsg_command))
         application.add_handler(CommandHandler("alarm", alarm_command))
@@ -553,6 +652,8 @@ def run_bot():
         application.add_handler(CommandHandler("email", email_command))
         application.add_handler(CommandHandler("bulb", bulb_command))
         application.add_handler(CommandHandler("setbg", setbg_command))
+        application.add_handler(CommandHandler("maximize", maximize_command))
+        application.add_handler(CommandHandler("close", close_command))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
         

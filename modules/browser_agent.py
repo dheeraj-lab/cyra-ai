@@ -160,6 +160,29 @@ async def _whatsapp_send_message(contact, message):
     except Exception as e:
         return f"WhatsApp error: {str(e)}"
 
+async def _whatsapp_check_notifications():
+    """Check for unread WhatsApp messages."""
+    try:
+        ctx = await _ensure_browser()
+        page = await _get_page("web.whatsapp.com")
+        if "web.whatsapp.com" not in page.url:
+            return None
+        
+        # Look for the unread count badge
+        unread_elements = await page.query_selector_all('span[aria-label*="unread"]')
+        if unread_elements:
+            notifications = []
+            for el in unread_elements[:3]:
+                # Try to find the contact name nearby
+                parent = await el.query_selector('xpath=ancestor::div[contains(@class, "lh-copy")]')
+                if parent:
+                    contact = await parent.inner_text()
+                    notifications.append(contact.split("\n")[0])
+            return notifications
+        return None
+    except:
+        return None
+
 
 async def _whatsapp_send_file(contact, file_path):
     """Send a file via WhatsApp Web."""
@@ -256,6 +279,7 @@ def upload_assignment(class_name, title, file=None, text=None): return _run_asyn
 def open_url(url): return _run_async(_open_url(url))
 def play_youtube_music(query): return _run_async(_play_youtube_music(query))
 def pause_youtube_music(force=True): return _run_async(_pause_youtube_music(force))
+def check_whatsapp_notifications(): return _run_async(_whatsapp_check_notifications())
 
 def close_browser():
     global _browser, _context, _playwright

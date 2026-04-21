@@ -3,6 +3,7 @@ import subprocess
 import time
 import ctypes
 import os
+import pygetwindow as gw
 
 def pc_control(action):
     actions = {
@@ -60,6 +61,11 @@ def pc_control(action):
         "taskbar_3": lambda: pyautogui.hotkey("win", "3"),
         "taskbar_4": lambda: pyautogui.hotkey("win", "4"),
         "taskbar_5": lambda: pyautogui.hotkey("win", "5"),
+        
+        # Scrolling
+        "scroll_up": lambda: pyautogui.scroll(500),
+        "scroll_down": lambda: pyautogui.scroll(-500),
+        "close": lambda: pyautogui.hotkey("alt", "f4"),
     }
 
     action_messages = {
@@ -102,6 +108,9 @@ def pc_control(action):
         "taskbar_3": "Taskbar app 3 open kar diya!",
         "taskbar_4": "Taskbar app 4 open kar diya!",
         "taskbar_5": "Taskbar app 5 open kar diya!",
+        "scroll_up": "Upar scroll kar diya! ⬆️",
+        "scroll_down": "Neeche scroll kar diya! ⬇️",
+        "close": "Window band kar di! ❌",
     }
 
     try:
@@ -113,6 +122,43 @@ def pc_control(action):
             return f"Action '{action}' nahi pata!"
     except Exception as e:
         return f"Error: {str(e)}"
+
+def maximize_window(title=None):
+    """Maximize a specific window by title or the active one."""
+    try:
+        if title:
+            windows = gw.getWindowsWithTitle(title)
+            if windows:
+                win = windows[0]
+                if win.isMinimized:
+                    win.restore()
+                win.maximize()
+                win.activate()
+                return f"'{title}' window maximize kar di! ✨"
+            else:
+                return f"'{title}' naam ki koi window nahi mili!"
+        else:
+            pyautogui.hotkey("win", "up")
+            return "Active window maximize kar di! ✨"
+    except Exception as e:
+        return f"Maximize karne mein error: {str(e)}"
+
+def close_window(title=None):
+    """Close a specific window by title or the active one."""
+    try:
+        if title:
+            windows = gw.getWindowsWithTitle(title)
+            if windows:
+                win = windows[0]
+                win.close()
+                return f"'{title}' window band kar di! ❌"
+            else:
+                return f"'{title}' naam ki koi window nahi mili!"
+        else:
+            pyautogui.hotkey("alt", "f4")
+            return "Active window band kar di! ❌"
+    except Exception as e:
+        return f"Close karne mein error: {str(e)}"
 
 def set_wallpaper(image_path):
     """Set Windows desktop wallpaper."""

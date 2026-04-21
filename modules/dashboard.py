@@ -35,6 +35,10 @@ def log_message(role, text):
     """role: 'user', 'cyra'"""
     socketio.emit('new_message', {'role': role, 'text': text})
 
+def update_emotion(emotion):
+    """emotion: 'happy', 'sad', etc."""
+    socketio.emit('emotion_update', {'emotion': emotion})
+
 def update_metrics():
     try:
         from modules.stats import load_stats

@@ -160,9 +160,63 @@ def active_mode(history):
     """Active conversation mode — Cyra is listening and responding."""
     global running
     from modules.avatar import set_sleeping
+    from modules.memory import build_memory_context, save_memory
+    from modules.vision import analyze_screen
+    from modules.sound_analyzer import start_sound_monitoring
+    
     set_sleeping(False)
     update_status("Speaking")
     speak("Hmm? You called~?", "curious")
+
+    # Start Sound Awareness
+    start_sound_monitoring(speak)
+
+    def proactive_vision_loop():
+        """Background thread to watch the screen and provide commentary."""
+        while running:
+            # Only analyze if we've been idle for a bit
+            time.sleep(120) # Every 2 minutes
+            if not running: break
+            
+            # Check if user is active/speaking (don't interrupt)
+            print("[Vision] Proactive check...")
+            context = analyze_screen("What is the user doing? Give a very short, cute commentary.")
+            if context and len(context) > 10:
+                speak(f"Aww, Dheeraj! {context}", "happy")
+                save_memory(f"User was seen doing: {context}")
+
+    def notification_monitor_loop():
+        """Check for WhatsApp notifications every 5 minutes."""
+        from modules.browser_agent import check_whatsapp_notifications
+        while running:
+            time.sleep(300) # Every 5 minutes
+            if not running: break
+            
+            notifs = check_whatsapp_notifications()
+            if notifs:
+                speak(f"Dheeraj, you have unread messages from {' and '.join(notifs[:2])}!", "excited")
+
+    def reminder_loop():
+        """Check for upcoming calendar events every minute."""
+        from modules.calendar import check_upcoming_reminders
+        while running:
+            time.sleep(60) # Every minute
+            if not running: break
+            
+            reminders = check_upcoming_reminders()
+            if reminders:
+                speak(f"Dheeraj, don't forget! You have: {', '.join(reminders)} coming up soon!", "excited")
+
+    vision_thread = threading.Thread(target=proactive_vision_loop, daemon=True)
+    vision_thread.start()
+    
+    notif_thread = threading.Thread(target=notification_monitor_loop, daemon=True)
+    notif_thread.start()
+    
+    reminder_thread = threading.Thread(target=reminder_loop, daemon=True)
+    reminder_thread.start()
+
+    from modules.stt import calibrate_user
 
     while running:
         update_status("Listening")
@@ -185,6 +239,15 @@ def active_mode(history):
             set_sleeping(True)
             return history
 
+        # Check for calibration
+        if "calibrate my voice" in user_input.lower():
+            speak("Okay! Please speak clearly after I say go!", "excited")
+            time.sleep(1)
+            speak("GO!", "happy")
+            result = calibrate_user()
+            speak(result, "happy")
+            continue
+
         # Get LLM response
         update_status("Thinking")
         response, history = chat(user_input, history)
@@ -199,9 +262,17 @@ def active_mode(history):
             play_animation("kiss")
 
         # Show emotion on avatar and speak
+        from modules.dashboard import update_emotion
+        update_emotion(response['emotion'])
+        
         set_expression(response['emotion'])
         update_status("Speaking")
         speak(response['response'], response['emotion'])
+        
+        # Save to long-term memory
+        save_memory(f"User said: {user_input}")
+        save_memory(f"Cyra said: {response['response']}")
+        
         reset_expression()
 
         # Execute action if any

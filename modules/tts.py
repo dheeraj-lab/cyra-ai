@@ -102,15 +102,25 @@ def get_cable_device():
         pass
     return None
 
+def stop_speaking():
+    """Immediately stop any current audio playback."""
+    try:
+        sd.stop()
+        print("[TTS] Stopped speaking.")
+    except:
+        pass
+
 def play_audio(data, samplerate):
     """Play audio — routes to CABLE if available for VSeeFace."""
     cable = get_cable_device()
-    if cable is not None:
-        sd.play(data, samplerate, device=cable)
+    try:
+        if cable is not None:
+            sd.play(data, samplerate, device=cable)
+        else:
+            sd.play(data, samplerate)
         sd.wait()
-    else:
-        sd.play(data, samplerate)
-        sd.wait()
+    except Exception as e:
+        print(f"[TTS] Playback error: {e}")
 
 # ==================== Main Speak Function ====================
 

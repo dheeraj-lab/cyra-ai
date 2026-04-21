@@ -19,7 +19,7 @@ import time
 import datetime
 import re
 from modules.vision import analyze_screen, analyze_webcam
-from modules.pc_control import pc_control
+from modules.pc_control import pc_control, maximize_window, close_window
 from modules.email_handler import send_email
 from modules.smart_home import turn_on_bulb, turn_off_bulb, set_brightness, set_color, get_bulb_status
 from modules.utils import find_app_path
@@ -462,6 +462,41 @@ def create_folder(folder_name="New Folder"):
     except Exception as e:
         return f"Error creating folder: {str(e)}"
 
+def open_folder(folder_name):
+    """Open a folder on the PC using File Explorer."""
+    try:
+        # Check for common folders first
+        common = {
+            "downloads": os.path.expanduser("~") + r"\Downloads",
+            "desktop": os.path.expanduser("~") + r"\Desktop",
+            "documents": os.path.expanduser("~") + r"\Documents",
+            "pictures": os.path.expanduser("~") + r"\Pictures",
+            "videos": os.path.expanduser("~") + r"\Videos",
+            "music": os.path.expanduser("~") + r"\Music",
+        }
+        
+        path = None
+        if folder_name.lower() in common:
+            path = common[folder_name.lower()]
+        elif os.path.exists(folder_name):
+            path = folder_name
+        else:
+            # Search for the folder
+            search_paths = [os.path.expanduser("~") + r"\Desktop", os.path.expanduser("~") + r"\Documents"]
+            for sp in search_paths:
+                for root, dirs, files in os.walk(sp):
+                    if folder_name.lower() in [d.lower() for d in dirs]:
+                        path = os.path.join(root, next(d for d in dirs if d.lower() == folder_name.lower()))
+                        break
+                if path: break
+        
+        if path:
+            os.startfile(path)
+            return f"Opening folder: {os.path.basename(path)}~!"
+        return f"Could not find folder: {folder_name}"
+    except Exception as e:
+        return f"Error opening folder: {str(e)}"
+
 def delete_temp():
     try:
         import shutil
@@ -493,6 +528,15 @@ def empty_recycle_bin():
         return "Recycle bin emptied!"
     except Exception as e:
         return f"Recycle bin failed: {str(e)}"
+
+def send_file_action(filename):
+    """Special action for Telegram bot to send a file."""
+    # We just return the filename with a prefix for the bot to handle
+    return f"SEND_FILE:{filename}"
+
+def send_folder_action(folder_name):
+    """Special action for Telegram bot to send folder files."""
+    return f"SEND_FOLDER:{folder_name}"
 
 def find_file(filename):
     try:
@@ -572,10 +616,17 @@ def handle_action(action, params=None):
         "restart": restart_pc,
         "screenshot": take_screenshot,
         "pc_control": pc_control,
+        "maximize_window": maximize_window,
+        "close_window": close_window,
         "enable_hotspot": enable_hotspot,
         "disable_hotspot": disable_hotspot,
         "organize_desktop": organize_desktop,
         "create_folder": lambda p: create_folder(p if p else "New Folder"),
+        "open_folder": open_folder,
+        "scroll_up": lambda _: pc_control("scroll_up"),
+        "scroll_down": lambda _: pc_control("scroll_down"),
+        "send_file": send_file_action,
+        "send_folder": send_folder_action,
         "delete_temp": delete_temp,
         "empty_recycle_bin": empty_recycle_bin,
         "find_file": find_file,
@@ -598,6 +649,16 @@ def handle_action(action, params=None):
         "read_notes": lambda _: read_notes(),
         "delete_notes": lambda _: delete_notes(),
         "daily_briefing": lambda _: daily_briefing(),
+        
+        # --- Advanced Enhancements ---
+        "translate": lambda p: __import__("googletrans", fromlist=["Translator"]).Translator().translate(p, dest='en').text,
+        "type_text": lambda p: (__import__("pyperclip").copy(p), __import__("pyautogui").hotkey("ctrl", "v")) and f"Typed: {p}",
+        "add_expense": lambda p: __import__("modules.finance", fromlist=["add_expense"]).add_expense(*(p.split("|") + ["general"])[:2]),
+        "get_finance": lambda _: __import__("modules.finance", fromlist=["get_finance_report"]).get_finance_report(),
+        
+        # --- Phase 5: Calendar & Assistant ---
+        "add_event": lambda p: __import__("modules.calendar", fromlist=["add_event"]).add_event(*(p.split("|") + [None]*2)[:2]),
+        "get_schedule": lambda _: __import__("modules.calendar", fromlist=["get_today_events"]).get_today_events(),
         
         # --- Vision & AI ---
         "see_screen": lambda p: analyze_screen(p if p else "What do you see on the screen?"),

@@ -31,6 +31,10 @@ socket.on('new_message', (data) => {
     }
 });
 
+socket.on('emotion_update', (data) => {
+    document.body.className = `cyber-kawaii mood-${data.emotion}`;
+});
+
 socket.on('stats_update', (data) => {
     // Limits
     const GROQ_LIMIT = 500000;

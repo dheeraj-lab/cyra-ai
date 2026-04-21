@@ -1,160 +1,138 @@
-"""
-Cyra STT — Speech-to-text with Groq Whisper.
-Fixes: ghost audio prevention, minimum duration, energy filter, timeout.
-"""
-
-import groq
-import sounddevice as sd
+import torch
 import numpy as np
+import sounddevice as sd
 import io
 import wave
-from dotenv import load_dotenv
 import os
 import time
+import threading
+from dotenv import load_dotenv
+import groq
+from rapidfuzz import process, fuzz
+from modules.tts import stop_speaking
+from modules.voice_id import verify_user, save_user_profile
 
 load_dotenv()
 
 client = groq.Groq(api_key=os.getenv("GROQ_API_KEY"))
 
+# VAD & Audio Settings
 SAMPLE_RATE = 16000
-SILENCE_THRESHOLD = 0.008       # Lowered to make it more sensitive to voice
-SILENCE_DURATION = 2            
-MIN_AUDIO_DURATION = 0.5        
-MAX_RECORD_DURATION = 15        
-MIN_AUDIO_ENERGY = 0.005        # Lowered to ensure user's voice isn't rejected
+CHUNK_SIZE = 512  
+SILENCE_DURATION = 0.5  # Snappy end detection
+WAKE_SENSITIVITY = 0.7  # High threshold to avoid noise
+MIN_RMS_THRESHOLD = 0.02 # High threshold to ignore crowd/distant voices
 
-def record_until_silence():
-    """Record audio until user stops speaking. Returns numpy array or None."""
-    print("Listening...")
-    audio_chunks = []
-    silent_chunks = 0
-    speaking = False
-    total_chunks = 0
-    max_chunks = MAX_RECORD_DURATION * 4  # 4 chunks per second
+KEYWORDS = [
+    "Cyra", "Dheeraj", "play", "pause", "song", "weather", "screenshot", 
+    "shutdown", "restart", "volume", "folder", "open", "WhatsApp", 
+    "message", "email", "timer", "alarm", "organize", "desktop", 
+    "maximize", "close", "minimize", "Chrome", "YouTube", "Spotify",
+    "calculate", "notes", "hotspot", "brightness", "bulb", "calibrate"
+]
 
-    with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32") as stream:
-        while total_chunks < max_chunks:
-            chunk, _ = stream.read(SAMPLE_RATE // 4)  # 250ms chunks
-            volume = np.abs(chunk).mean()
-            total_chunks += 1
+# Load Silero VAD
+model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad', force_reload=False)
+(get_speech_timestamps, save_audio, read_audio, VADIterator, collect_chunks) = utils
 
-            if volume > SILENCE_THRESHOLD:
-                speaking = True
-                silent_chunks = 0
-                audio_chunks.append(chunk)
-            elif speaking:
-                silent_chunks += 1
-                audio_chunks.append(chunk)
-                if silent_chunks >= SILENCE_DURATION * 4:
-                    break
+class StreamingListener:
+    def __init__(self):
+        self.audio_buffer = []
+        self.speech_detected = False
+        self.last_speech_time = 0
+        self.interruption_callback = None
 
-    if not audio_chunks:
-        return None
-
-    audio = np.concatenate(audio_chunks, axis=0).flatten()
-
-    # Check minimum duration
-    duration = len(audio) / SAMPLE_RATE
-    if duration < MIN_AUDIO_DURATION:
-        print(f"[STT] Audio too short ({duration:.1f}s), ignoring")
-        return None
-
-    # Normalize audio to improve recognition accuracy for quiet speech
-    max_vol = np.abs(audio).max()
-    if max_vol > 0:
-        audio = audio / max_vol
-
-    return audio
-
-def numpy_to_wav_bytes(audio, sample_rate=16000):
-    """Convert numpy audio to WAV bytes for Whisper API."""
-    buf = io.BytesIO()
-    with wave.open(buf, 'wb') as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(sample_rate)
-        wf.writeframes((audio * 32767).astype(np.int16).tobytes())
-    buf.seek(0)
-    return buf
-
-def listen():
-    """Listen for speech and transcribe. Returns text or empty string."""
-    audio = record_until_silence()
-
-    if audio is None:
-        return ""
-
-    wav_bytes = numpy_to_wav_bytes(audio)
-
-    try:
-        # Helper function for fallback
-        def transcribe_groq(model_name):
-            return client.audio.transcriptions.create(
-                file=("audio.wav", wav_bytes),
-                model=model_name,
-                prompt="Dheeraj, Cyra, Hindi, Hinglish, play, open, search, WhatsApp, assignment, upload, weather, timer, alarm, screenshot, organize, YouTube, Spotify, Chrome, Discord, Brave, send, message, email, note, shutdown, restart, brightness, bulb, hotspot",
-                response_format="text",
-                temperature=0.0  # CRITICAL: Forces model to be strictly factual, eliminates 99% of random hallucinations
-            ).strip()
-
-        # STT Fallback Hierarchy
-        try:
-            result = transcribe_groq("whisper-large-v3-turbo")
-        except Exception:
-            try:
-                result = transcribe_groq("whisper-large-v3")
-                print("[STT: Groq whisper-large-v3 (Fallback 1)]")
-            except Exception:
-                try:
-                    # Google Web Speech (FREE, EXCELLENT for Hindi/Hinglish)
-                    import speech_recognition as sr
-                    r = sr.Recognizer()
-                    with io.BytesIO(wav_bytes.getvalue()) as source:
-                        with sr.AudioFile(source) as audio_file:
-                            audio_data = r.record(audio_file)
-                            result = r.recognize_google(audio_data, language="en-IN") # Indian English/Hinglish
-                            print("[STT: Google Web Speech (Fallback 2)]")
-                except Exception:
-                    try:
-                        result = transcribe_groq("distil-whisper-large-v3-en")
-                        print("[STT: Groq distil-whisper (Fallback 3)]")
-                    except Exception as e_final:
-                        print(f"[STT Error] All models failed. {e_final}")
-                        return ""
-
-        # Final filter — reject very short or meaningless transcriptions (Whisper hallucinations)
-        lower_result = result.lower()
+    def listen(self, interruption_callback=None):
+        self.interruption_callback = interruption_callback
+        audio = self._record_dynamic()
         
-        exact_ignore_list = [
-            ".", ",", "...", "you", "the", "a", "i", "bye", "hmm",
-            "thank you.", "thank you", "thanks.", "thank you for watching.",
-            "thanks for watching.", "subscribe.", "thank you.",
-            "paris", "relax", "question", "mois", "and say anything", "and post the song",
-            "you can do it", "that's it.", "okay.", "okay", "yeah", "yes", "so", "right", "alright"
-        ]
-        
-        if len(result) < 2 or lower_result in exact_ignore_list:
+        if audio is None or len(audio) < SAMPLE_RATE * 0.3:
             return ""
-            
-        # Catch partial matches for severe hallucinations
-        hallucination_triggers = [
-            "declinex", "and say anything", "thanks for watching", "subscribe", 
-            "paris, relax", "but it's got to go", "mois,ro", "amara.org", 
-            "translation by", "subtitle by", "viewing", "you for watching"
-        ]
-        for hallucination in hallucination_triggers:
-            if hallucination in lower_result:
-                return ""
 
-        # Track usage
+        # VOICE LOCK: Verify if this is the user. 
+        # If there's a crowd, this is the only way to filter them.
+        if not verify_user(audio, threshold=0.35): # Stricter threshold for crowds
+            print("[STT] Voice does not match user profile. Ignoring.")
+            return ""
+
+        return self._transcribe(audio)
+
+    def _record_dynamic(self):
+        print("[STT] Listening (Voice-Lock Active)...")
+        self.audio_buffer = []
+        self.speech_detected = False
+        self.last_speech_time = 0
+        
+        with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32") as stream:
+            while True:
+                chunk, _ = stream.read(CHUNK_SIZE)
+                chunk = chunk.flatten()
+                
+                input_tensor = torch.from_numpy(chunk)
+                speech_prob = model(input_tensor, SAMPLE_RATE).item()
+                rms = np.sqrt(np.mean(chunk**2))
+
+                # FAST INTERRUPTION: Detect speech even if it's brief
+                if speech_prob > WAKE_SENSITIVITY and rms > MIN_RMS_THRESHOLD:
+                    if not self.speech_detected:
+                        print("[STT] Interrupting...")
+                        if self.interruption_callback:
+                            self.interruption_callback() # STOP TTS IMMEDIATELY
+                        self.speech_detected = True
+                    
+                    self.audio_buffer.append(chunk)
+                    self.last_speech_time = time.time()
+                elif self.speech_detected:
+                    self.audio_buffer.append(chunk)
+                    if time.time() - self.last_speech_time > SILENCE_DURATION:
+                        break
+                
+                # Max 15s record
+                if self.speech_detected and len(self.audio_buffer) * CHUNK_SIZE > SAMPLE_RATE * 15:
+                    break
+                
+                # Long-idle timeout (30s)
+                if not self.speech_detected and len(self.audio_buffer) == 0 and time.time() - self.last_speech_time > 30:
+                    return None
+
+        return np.concatenate(self.audio_buffer) if self.audio_buffer else None
+
+    def _transcribe(self, audio):
+        buf = io.BytesIO()
+        with wave.open(buf, 'wb') as wf:
+            wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(SAMPLE_RATE)
+            wf.writeframes((audio * 32767).astype(np.int16).tobytes())
+        buf.seek(0)
+
         try:
-            from modules.stats import update_usage
-            update_usage("stt_requests", 1)
+            result = client.audio.transcriptions.create(
+                file=("audio.wav", buf),
+                model="whisper-large-v3-turbo",
+                prompt="Cyra, Dheeraj, English instructions",
+                response_format="text", temperature=0.0
+            ).strip()
+            
+            # Fuzzy Correction
+            words = result.split()
+            corrected = []
+            for w in words:
+                match = process.extractOne(w, KEYWORDS, scorer=fuzz.WRatio)
+                corrected.append(match[0] if match and match[1] > 90 else w)
+            result = " ".join(corrected)
+
+            # Hallucination Filter
+            bad = ["thank you", "thanks for watching", "pessoal", "sonia", "après", "subscribe"]
+            if len(result) < 3 or any(b in result.lower() for b in bad):
+                return ""
+            return result
         except:
-            pass
+            return ""
 
-        return result
-
-    except Exception as e:
-        print(f"[STT] Transcription error: {e}")
-        return ""
+_listener = StreamingListener()
+def listen(): return _listener.listen(interruption_callback=stop_speaking)
+def calibrate_user():
+    print("Speak clearly for 3 seconds...")
+    audio = _listener._record_dynamic()
+    if audio is not None:
+        return "Voice profile saved!" if save_user_profile(audio) else "Failed."
+    return "No audio detected."

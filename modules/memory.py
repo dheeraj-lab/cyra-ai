@@ -1,74 +1,61 @@
-import chromadb
-from chromadb.utils import embedding_functions
 import os
-from datetime import datetime
+import chromadb
+from sentence_transformers import SentenceTransformer
+import datetime
 
-MEMORY_PATH = "./memories"
+# Initialize ChromaDB
+DB_PATH = "memories/chroma_db"
+os.makedirs("memories", exist_ok=True)
 
-client = chromadb.PersistentClient(path=MEMORY_PATH)
+client = chromadb.PersistentClient(path=DB_PATH)
+collection = client.get_or_create_collection(name="cyra_long_term_memory")
 
-embedding_fn = embedding_functions.OllamaEmbeddingFunction(
-    url="http://localhost:11434/api/embeddings",
-    model_name="nomic-embed-text"
-)
+# Load a small, fast embedding model
+model = SentenceTransformer('all-MiniLM-L6-v2')
 
-collection = client.get_or_create_collection(
-    name="cyra_memories",
-    embedding_function=embedding_fn
-)
-
-def should_save_memory(text):
-    """Filter out trivial messages that shouldn't be stored in long-term memory."""
-    trivial_words = {"hi", "hello", "hey", "ok", "okay", "thanks", "thank you", "bye", "goodbye", "cyra", "siri"}
-    words = set(text.lower().split())
-    
-    # Don't save if it's too short or just trivial words
-    if len(words) < 4:
-        return False
-    if words.issubset(trivial_words):
-        return False
-    return True
-
-def save_memory(text, memory_type="conversation"):
-    if not should_save_memory(text):
+def save_memory(text, metadata=None):
+    """Save a piece of information to long-term memory."""
+    if not text or len(text.strip()) < 5:
         return
-        
-    try:
-        timestamp = datetime.now().isoformat()
-        memory_id = f"mem_{datetime.now().timestamp()}"
-        collection.add(
-            documents=[text],
-            metadatas=[{"type": memory_type, "timestamp": timestamp}],
-            ids=[memory_id]
-        )
-    except Exception as e:
-        print(f"[Memory] Could not save: {e}")
+    
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    embedding = model.encode(text).tolist()
+    
+    collection.add(
+        embeddings=[embedding],
+        documents=[text],
+        metadatas=[metadata or {"timestamp": timestamp}],
+        ids=[f"mem_{int(datetime.datetime.now().timestamp() * 1000)}"]
+    )
+    # print(f"[Memory] Saved: {text[:50]}...")
 
-def get_relevant_memories(query, n=3):
+def build_memory_context(query, n_results=5):
+    """Retrieve relevant memories for the current query."""
+    if not query:
+        return ""
+    
     try:
-        count = collection.count()
-        if count == 0:
-            return []
-
+        query_embedding = model.encode(query).tolist()
         results = collection.query(
-            query_texts=[query],
-            n_results=min(n, count)
+            query_embeddings=[query_embedding],
+            n_results=n_results
         )
-
-        if results and results["documents"]:
-            return results["documents"][0]
+        
+        memories = results.get("documents", [[]])[0]
+        if not memories:
+            return ""
+        
+        context = "\nThings you remember that might be relevant:\n"
+        for i, mem in enumerate(memories, 1):
+            context += f"- {mem}\n"
+        return context
     except Exception as e:
-        print(f"[Memory] Query failed: {e}")
-    return []
-
-def build_memory_context(query):
-    memories = get_relevant_memories(query)
-    if not memories:
+        print(f"[Memory] Retrieval error: {e}")
         return ""
 
-    context = "Relevant past facts you remember:\n"
-    for mem in memories:
-        # Avoid redundant context lines
-        if mem.strip():
-            context += f"- {mem}\n"
-    return context
+def forget_everything():
+    """Clear all memories."""
+    client.delete_collection("cyra_long_term_memory")
+    global collection
+    collection = client.get_or_create_collection(name="cyra_long_term_memory")
+    return "Everything forgotten!"
