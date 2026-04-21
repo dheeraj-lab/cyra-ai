@@ -1,7 +1,11 @@
 venv/
 .env
+.cache/
 memories/
 __pycache__/
 kokoro_model/
 *.pth
 *.onnx
+*.json
+!package.json
+!composer.json
