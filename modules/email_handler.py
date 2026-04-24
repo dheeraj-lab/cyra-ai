@@ -48,6 +48,7 @@ def send_email(to, subject, body, attachment_path=None, from_account="primary"):
         server.sendmail(gmail, to, msg.as_string())
         server.quit()
 
-        return f"Email send kar diya from {gmail} to {to}!"
+        return f"Email sent from {gmail} to {to}!"
+
     except Exception as e:
-        return f"Email nahi bheja: {str(e)}"
+        return f"Failed to send email: {str(e)}"

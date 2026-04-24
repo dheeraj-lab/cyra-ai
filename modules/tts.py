@@ -131,7 +131,7 @@ def stop_speaking():
     except:
         pass
 
-def play_audio(data, samplerate):
+def play_audio(data, samplerate, on_playback_start=None):
     """Play audio — routes to CABLE if available for VSeeFace. Uses polling for instant interrupt."""
     global _speaking, _interrupted
     _interrupted = False
@@ -139,6 +139,13 @@ def play_audio(data, samplerate):
     try:
         with _speaking_lock:
             _speaking = True
+            
+        if on_playback_start:
+            try:
+                on_playback_start()
+            except Exception as e:
+                print(f"[TTS] Callback error: {e}")
+                
         if cable is not None:
             sd.play(data, samplerate, device=cable)
         else:
@@ -168,7 +175,7 @@ def play_audio(data, samplerate):
 
 # ==================== Main Speak Function ====================
 
-def speak_elevenlabs(text, emotion):
+def speak_elevenlabs(text, emotion, on_playback_start=None):
     """Speak using ElevenLabs — highest quality."""
     api_key = os.getenv("ELEVENLABS_API_KEY")
     if not api_key:
@@ -215,14 +222,14 @@ def speak_elevenlabs(text, emotion):
             pass
 
         data, samplerate = sf.read(tmp_path)
-        play_audio(data, samplerate)
+        play_audio(data, samplerate, on_playback_start)
         os.unlink(tmp_path)
         return True
     except Exception:
         # Silencing terminal errors as requested by user
         return False
 
-def speak_edge(text, emotion):
+def speak_edge(text, emotion, on_playback_start=None):
     """Speak using edge-tts — fast and free."""
     try:
         # Run async edge-tts from sync context
@@ -240,14 +247,14 @@ def speak_edge(text, emotion):
             tmp_path = asyncio.run(_edge_tts_generate(text, emotion))
 
         data, samplerate = sf.read(tmp_path)
-        play_audio(data, samplerate)
+        play_audio(data, samplerate, on_playback_start)
         os.unlink(tmp_path)
         return True
     except Exception as e:
         print(f"[TTS] Edge-TTS failed: {e}")
         return False
 
-def speak_kokoro(text, emotion):
+def speak_kokoro(text, emotion, on_playback_start=None):
     """Speak using kokoro — offline fallback (lazy loaded)."""
     try:
         pipeline = _get_kokoro()
@@ -260,27 +267,40 @@ def speak_kokoro(text, emotion):
             speed=speed
         )
         for _, _, audio in generator:
-            play_audio(audio, 24000)
+            play_audio(audio, 24000, on_playback_start)
+            on_playback_start = None  # Only call it on the first chunk
         return True
     except Exception as e:
         print(f"[TTS] Kokoro failed: {e}")
         return False
 
-def speak(text, emotion="neutral"):
+def speak(text, emotion="neutral", on_playback_start=None):
     """Main speak function — tries ElevenLabs -> edge-tts -> kokoro."""
     if not text or not text.strip():
         return
 
-    # 1. Try ElevenLabs first (Highest quality, best for Hindi/English)
+    # Call the playback start callback immediately if it's the only way to show the message
+    # if TTS fails later, the user at least sees the text.
+    playback_triggered = False
+    def trigger_callback():
+        nonlocal playback_triggered
+        if on_playback_start and not playback_triggered:
+            on_playback_start()
+            playback_triggered = True
+
+    # 1. Try ElevenLabs first
     if os.getenv("ELEVENLABS_API_KEY"):
-        success = speak_elevenlabs(text, emotion)
+        success = speak_elevenlabs(text, emotion, on_playback_start=trigger_callback)
         if success:
             return
 
-    # 2. Try edge-tts (fast, free, natural fallback)
-    success = speak_edge(text, emotion)
+    # 2. Try edge-tts
+    success = speak_edge(text, emotion, on_playback_start=trigger_callback)
     if success:
         return
 
-    # 3. Fallback to kokoro (offline, lazy loaded)
-    speak_kokoro(text, emotion)
+    # 3. Fallback to kokoro
+    speak_kokoro(text, emotion, on_playback_start=trigger_callback)
+    
+    # If all failed, still trigger the callback so text is shown
+    trigger_callback()

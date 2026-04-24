@@ -9,3 +9,9 @@ kokoro_model/
 *.json
 !package.json
 !composer.json
+!*.json.example
+
+personality.txt
+interests.json
+cyra_config.json
+contacts.json

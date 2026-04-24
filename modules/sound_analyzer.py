@@ -51,14 +51,14 @@ class SoundAnalyzer:
             if len(volume_history) < 10:
                 return
             
-            # Calculate dynamic threshold based on ambient noise
+            # Calculate dynamic threshold based on ambient noise - Only for EXTREME sounds
             baseline = np.mean(volume_history[:-1])  # Exclude current reading
-            dynamic_threshold = max(25, baseline * 3.0)  # At least 25, or 3x ambient
+            dynamic_threshold = max(60, baseline * 6.0)  # At least 60, or 6x ambient
             
             current_time = time.time()
             
-            # Only alert for TRULY loud, sustained events
-            if volume_norm > dynamic_threshold and volume_norm > 30:
+            # Only alert for TRULY extreme, sustained loud events (like a bomb/bang)
+            if volume_norm > dynamic_threshold and volume_norm > 80:
                 if current_time - self.last_alert_time > 60:  # Max once per minute
                     self.last_alert_time = current_time
                     # Use a thread to avoid blocking the audio callback

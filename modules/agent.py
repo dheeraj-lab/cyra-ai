@@ -198,7 +198,11 @@ def restart_pc():
     os.system("shutdown /r /t 5")
     return "Restarting your PC~!"
 
-def get_weather(city="Delhi"):
+def get_weather(city=None):
+    if not city:
+        from modules.config import get
+        city = get("city", "Delhi")
+
     try:
         api_key = os.getenv("WEATHER_API_KEY")
         url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
@@ -219,7 +223,10 @@ def set_timer(seconds, message="Timer complete!"):
     def timer_thread():
         time.sleep(seconds)
         from modules.tts import speak
-        speak(f"Hey Dheeraj! {message}", "excited")
+        from modules.config import get
+        owner = get("owner", "User")
+        speak(f"Hey {owner}! {message}", "excited")
+
         print(f"\n[Timer: {message}]")
     thread = threading.Thread(target=timer_thread, daemon=True)
     thread.start()
@@ -248,7 +255,10 @@ def set_alarm(time_str):
             while True:
                 if datetime.datetime.now() >= alarm_time:
                     from modules.tts import speak
-                    speak(f"Dheeraj! Alarm! Time is up — {time_str}!", "excited")
+                    from modules.config import get
+                    owner = get("owner", "User")
+                    speak(f"{owner}! Alarm! Time is up — {time_str}!", "excited")
+
                     print(f"\n[ALARM] {time_str} — RING RING!")
                     if alarm_time in alarms:
                         alarms.remove(alarm_time)
@@ -290,7 +300,10 @@ def parse_timer(params):
         numbers = re.findall(r'\d+', params)
         if numbers:
             seconds = int(numbers[0]) * 60
-    return seconds, "Timer done! Hey Dheeraj, time is up!"
+    from modules.config import get
+    owner = get("owner", "User")
+    return seconds, f"Timer done! Hey {owner}, time is up!"
+
 
 NOTES_FILE = "notes.json"
 
@@ -354,8 +367,12 @@ def daily_briefing():
         if hour < 12: greeting = "Good morning"
         elif hour < 17: greeting = "Good afternoon"
         else: greeting = "Good evening"
-        briefing = f"{greeting} Dheeraj! Today is {day}. "
-        weather = get_weather("Delhi")
+        from modules.config import get
+        owner = get("owner", "User")
+        city = get("city", "Delhi")
+        briefing = f"{greeting} {owner}! Today is {day}. "
+        weather = get_weather(city)
+
         briefing += f"Weather — {weather} "
         notes = load_notes()
         if notes:

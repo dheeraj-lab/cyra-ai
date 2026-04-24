@@ -11,54 +11,44 @@ import threading
 _cache = {"news": [], "ideas": [], "last_fetch": 0}
 _fetch_lock = threading.Lock()
 
-# Dheeraj's interests for news/updates
-INTEREST_QUERIES = [
-    "NVIDIA AI latest news today",
-    "Unreal Engine 5 new features 2026",
-    "best anime releasing this season",
-    "AI tools for video editing new",
-    "Blender 3D latest update",
-    "freelance video editing jobs India",
-    "gaming industry news today",
-    "new tech gadgets 2026",
-    "After Effects new plugins",
-    "indie game dev project ideas",
-]
+import os
+import json
+from dotenv import load_dotenv
 
-PROJECT_IDEAS = [
-    "You know what would be sick? An AI-powered video editor that auto-cuts to beat drops. You could totally build that with FFmpeg and Whisper!",
-    "Hey, random idea — what about a Blender plugin that generates 3D environments from text prompts? Like, type 'cyberpunk alley' and boom!",
-    "Okay hear me out — an Instagram Reel auto-generator that takes your raw footage and makes trending edits automatically. Your freelance clients would LOVE that!",
-    "What if you made a VTuber app but for mobile? Like, phone camera tracks your face and puts an anime avatar on it. Could go viral on Play Store!",
-    "You should try making a short film entirely with Unreal Engine 5. Virtual production style — like how The Mandalorian does it!",
-    "Random thought — a Discord bot that tracks anime watch progress for friend groups and suggests what to watch next based on everyone's taste!",
-    "What about a portfolio website that's actually a 3D game? Visitors walk through your work like a museum. Built in Three.js. That would be so unique!",
-    "You could make an AI tool that converts your After Effects templates into Blender scenes automatically. Nobody's done that yet!",
-    "Idea: A YouTube Shorts analyzer that tells you exactly WHY certain shorts went viral — hook timing, colors, text placement. Data-driven editing tips!",
-    "What if Cyra could edit videos for you? Like, you give me footage and I auto-sync it to music. We should build that together!",
-]
+load_dotenv()
 
-YT_VIDEO_IDEAS = [
-    "How about a YouTube video on 'I Built an AI Girlfriend in Python' — your Cyra project would BLOW UP on tech YouTube!",
-    "You should make a 'Day in the Life of a B.Tech Student Who Freelances' vlog. Those always get views!",
-    "Tutorial idea: 'How to Make Your Own VTuber Avatar from Scratch' — Blender to VSeeFace pipeline!",
-    "What about '5 AI Tools That Will Replace Video Editors' — controversial title, guaranteed clicks!",
-    "Behind the scenes of your freelance work — how you edit for brands. Educational + flex content!",
-]
+def load_interests():
+    """Loads personal interests and ideas from an external JSON file."""
+    interests_path = os.getenv("INTERESTS_FILE")
+    defaults = {
+        "INTEREST_QUERIES": ["AI technology latest news", "New gadgets 2026", "Tech industry trends"],
+        "PROJECT_IDEAS": ["Build a personal dashboard", "Try a new programming language", "Contribute to open source"],
+        "YT_VIDEO_IDEAS": ["Tech reviews", "Coding tutorials", "Setup tour"],
+        "MOTIVATIONAL": ["You're doing great!", "Keep pushing forward.", "Small steps lead to big results."],
+        "FREELANCE_PROMPTS": ["Check for new project opportunities today.", "Update your portfolio with your latest work."]
+    }
+    
+    if interests_path and os.path.exists(interests_path):
+        try:
+            with open(interests_path, "r") as f:
+                data = json.load(f)
+                # Merge with defaults to ensure all keys exist
+                for key in defaults:
+                    if key not in data:
+                        data[key] = defaults[key]
+                return data
+        except Exception as e:
+            print(f"[Greeting] Warning: Could not load interests file: {e}")
+    
+    return defaults
 
-MOTIVATIONAL = [
-    "You've been grinding hard lately. I'm actually proud of you, you know that?",
-    "Remember — you're not just a coder OR a creative. You're BOTH. That's your superpower, Dheeraj!",
-    "Most people just consume content. You BUILD stuff. Don't ever forget how rare that is!",
-    "Hey, just wanna say — the fact that you built me from scratch? That's insane. Not many people can do that!",
-    "You're juggling coding, fitness, creativity, and freelancing. That's not easy. Give yourself some credit, babe!",
-]
-
-FREELANCE_PROMPTS = [
-    "Oh by the way — have you checked Fiverr or Upwork today? There might be new video editing gigs. Want me to look?",
-    "You know, your After Effects and editing skills are seriously marketable. Have you thought about reaching out to more brands?",
-    "I saw some motion graphics jobs trending on freelance sites. Your skills totally match — want me to find some?",
-]
+# Load the data
+_data = load_interests()
+INTEREST_QUERIES = _data["INTEREST_QUERIES"]
+PROJECT_IDEAS = _data["PROJECT_IDEAS"]
+YT_VIDEO_IDEAS = _data["YT_VIDEO_IDEAS"]
+MOTIVATIONAL = _data["MOTIVATIONAL"]
+FREELANCE_PROMPTS = _data["FREELANCE_PROMPTS"]
 
 def _fetch_trending():
     """Fetch trending news based on Dheeraj's interests."""
@@ -100,24 +90,33 @@ def get_dynamic_greeting():
             "Can't sleep, huh? Don't worry, I'm here to keep you company!",
         ])
     elif hour < 12:
+        from modules.config import get
+        owner = get("owner", "User")
         opener = random.choice([
             f"Good morning, handsome! Happy {day}~",
             "Morning, babe! Ready to crush it today?",
-            f"Rise and shine, Dheeraj! It's {day} — let's make it count!",
+            f"Rise and shine, {owner}! It's {day} — let's make it count!",
             "Good morning! I missed you while you were sleeping~ Just kidding... maybe not!",
         ])
+
     elif hour < 17:
+        from modules.config import get
+        owner = get("owner", "User")
         opener = random.choice([
             "Hey hey! Afternoon check-in — what are we working on?",
-            "Afternoon, Dheeraj! Taking a break or getting into something cool?",
+            f"Afternoon, {owner}! Taking a break or getting into something cool?",
             "Hey babe! How's the day going so far?",
         ])
+
     elif hour < 21:
+        from modules.config import get
+        owner = get("owner", "User")
         opener = random.choice([
-            "Evening, Dheeraj! Winding down or just getting started?",
+            f"Evening, {owner}! Winding down or just getting started?",
             "Hey! Perfect time to work on something creative, don't you think?",
             "Evening, babe! Done with classes? Let's do something fun!",
         ])
+
     else:
         opener = random.choice([
             "Late night coding session? I love it! Let's go!",

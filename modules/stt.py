@@ -19,17 +19,18 @@ client = groq.Groq(api_key=os.getenv("GROQ_API_KEY"))
 # VAD & Audio Settings
 SAMPLE_RATE = 16000
 CHUNK_SIZE = 512  
-SILENCE_DURATION = 0.6  # Slightly longer for natural sentence endings
+SILENCE_DURATION = 0.4  # Faster response detection
 WAKE_SENSITIVITY = 0.75  # Higher threshold to avoid noise triggers
 MIN_RMS_THRESHOLD = 0.025 # Higher threshold to ignore crowd/distant voices
 
 KEYWORDS = [
-    "Cyra", "Dheeraj", "play", "pause", "song", "weather", "screenshot", 
+    "Cyra", "play", "pause", "song", "weather", "screenshot", 
     "shutdown", "restart", "volume", "folder", "open", "WhatsApp", 
     "message", "email", "timer", "alarm", "organize", "desktop", 
     "maximize", "close", "minimize", "Chrome", "YouTube", "Spotify",
     "calculate", "notes", "hotspot", "brightness", "bulb", "calibrate"
 ]
+
 
 # Load Silero VAD
 model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad', force_reload=False)
@@ -76,25 +77,35 @@ class StreamingListener:
         speech_chunk_count = 0
         SPEECH_CONFIRM_CHUNKS = 2  # Need 2 consecutive speech chunks to confirm
         
+        rolling_buffer = []
+
         with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32") as stream:
             while True:
                 chunk, _ = stream.read(CHUNK_SIZE)
                 chunk = chunk.flatten()
+                
+                rolling_buffer.append(chunk)
+                if len(rolling_buffer) > 15:
+                    rolling_buffer.pop(0)
+
                 
                 input_tensor = torch.from_numpy(chunk)
                 speech_prob = model(input_tensor, SAMPLE_RATE).item()
                 rms = np.sqrt(np.mean(chunk**2))
 
                 is_speech = speech_prob > WAKE_SENSITIVITY and rms > MIN_RMS_THRESHOLD
-                
-                # Don't detect speech while Cyra is talking (avoid self-trigger)
-                if tts_is_speaking():
-                    is_speech = False
 
                 if is_speech:
                     speech_chunk_count += 1
                     
                     if speech_chunk_count >= SPEECH_CONFIRM_CHUNKS and not self.speech_detected:
+                        if tts_is_speaking():
+                            # Cyra is talking. To interrupt, the user must be slightly louder than the echo.
+                            # We use a higher RMS threshold here for better 'barge-in' performance.
+                            if rms < MIN_RMS_THRESHOLD * 2.5: 
+                                speech_chunk_count = 0
+                                continue
+                        
                         # Confirmed real speech — trigger interrupt
                         self._log_status("Speech detected — recording...")
                         if self.interruption_callback:
@@ -135,8 +146,9 @@ class StreamingListener:
             result = client.audio.transcriptions.create(
                 file=("audio.wav", buf),
                 model="whisper-large-v3-turbo",
-                prompt="Cyra, Dheeraj, English instructions",
+                prompt="Cyra, English instructions",
                 response_format="text", temperature=0.0
+
             ).strip()
             
             # Fuzzy Correction

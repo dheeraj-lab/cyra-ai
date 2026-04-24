@@ -21,17 +21,21 @@ def turn_on_bulb():
     try:
         cloud = get_cloud()
         result = cloud.sendcommand(DEVICE_ID, [{"code": "switch_led", "value": True}])
-        return "Bulb on kar diya!"
+        return "Bulb turned on!"
+
     except Exception as e:
-        return f"Bulb on nahi hua: {str(e)}"
+        return f"Could not turn on bulb: {str(e)}"
+
 
 def turn_off_bulb():
     try:
         cloud = get_cloud()
         result = cloud.sendcommand(DEVICE_ID, [{"code": "switch_led", "value": False}])
-        return "Bulb off kar diya!"
+        return "Bulb turned off!"
+
     except Exception as e:
-        return f"Bulb off nahi hua: {str(e)}"
+        return f"Could not turn off bulb: {str(e)}"
+
 
 def set_brightness(level):
     try:
@@ -41,9 +45,11 @@ def set_brightness(level):
             {"code": "switch_led", "value": True},
             {"code": "bright_value_v2", "value": brightness}
         ])
-        return f"Brightness {level}% set kar diya!"
+        return f"Brightness set to {level}%!"
+
     except Exception as e:
-        return f"Brightness nahi set hua: {str(e)}"
+        return f"Could not set brightness: {str(e)}"
+
 
 def set_color(color):
     try:
@@ -60,7 +66,8 @@ def set_color(color):
         
         color_lower = color.lower()
         if color_lower not in colors:
-            return f"Color '{color}' nahi pata! Try: red, green, blue, yellow, white, purple, orange, pink"
+            return f"I don't know the color '{color}'! Try: red, green, blue, yellow, white, purple, orange, pink"
+
         
         h, s, v = colors[color_lower]
         cloud = get_cloud()
@@ -69,9 +76,11 @@ def set_color(color):
             {"code": "work_mode", "value": "colour"},
             {"code": "colour_data_v2", "value": {"h": h, "s": s, "v": v}}
         ])
-        return f"Bulb {color} kar diya!"
+        return f"Bulb set to {color}!"
+
     except Exception as e:
-        return f"Color nahi set hua: {str(e)}"
+        return f"Could not set color: {str(e)}"
+
 
 def get_bulb_status():
     try:
@@ -87,6 +96,7 @@ def get_bulb_status():
             elif item["code"] == "bright_value_v2":
                 brightness = round((item["value"] / 1000) * 100)
         
-        return f"Bulb {'on' if is_on else 'off'} hai, brightness {brightness}%!"
+        return f"The bulb is {'on' if is_on else 'off'} with {brightness}% brightness!"
+
     except Exception as e:
-        return f"Status nahi mila: {str(e)}"
+        return f"Could not get status: {str(e)}"

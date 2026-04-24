@@ -251,10 +251,13 @@ def active_mode(history):
             
             print("[Vision] Proactive check...")
             try:
+                from modules.config import get
+                owner = get("owner", "User")
                 context = analyze_screen("What is the user doing? Give a very short, cute commentary.")
                 if context and len(context) > 10:
-                    speak(f"Aww, Dheeraj! {context}", "happy")
+                    speak(f"Aww, {owner}! {context}", "happy")
                     save_memory(f"User was seen doing: {context}")
+
             except Exception as e:
                 print(f"[Vision] Error: {e}")
 
@@ -268,7 +271,10 @@ def active_mode(history):
             try:
                 notifs = check_whatsapp_notifications()
                 if notifs:
-                    speak(f"Dheeraj, you have unread messages from {' and '.join(notifs[:2])}!", "excited")
+                    from modules.config import get
+                    owner = get("owner", "User")
+                    speak(f"{owner}, you have unread messages from {' and '.join(notifs[:2])}!", "excited")
+
             except:
                 pass
 
@@ -282,7 +288,10 @@ def active_mode(history):
             try:
                 reminders = check_upcoming_reminders()
                 if reminders:
-                    speak(f"Dheeraj, don't forget! You have: {', '.join(reminders)} coming up soon!", "excited")
+                    from modules.config import get
+                    owner = get("owner", "User")
+                    speak(f"{owner}, don't forget! You have: {', '.join(reminders)} coming up soon!", "excited")
+
             except:
                 pass
 
@@ -328,7 +337,6 @@ def active_mode(history):
         # Get LLM response
         update_status("Thinking")
         response, history = chat(user_input, history)
-        print(f"Cyra [{response['emotion']}]: {response['response']}\n")
 
         # Procedural Animations based on text
         resp_text = response['response'].lower()
@@ -341,7 +349,13 @@ def active_mode(history):
         update_emotion(response['emotion'])
         set_expression(response['emotion'])
         update_status("Speaking")
-        speak(response['response'], response['emotion'])
+        
+        def on_speak_start():
+            print(f"Cyra [{response['emotion']}]: {response['response']}\n")
+            from modules.dashboard import log_message
+            log_message("cyra", response['response'])
+            
+        speak(response['response'], response['emotion'], on_playback_start=on_speak_start)
         
         # Save to long-term memory
         save_memory(f"User said: {user_input}")
@@ -389,6 +403,16 @@ def main():
         sys.exit(0)
 
     signal.signal(signal.SIGINT, signal_handler)
+    
+    # Ensure VSeeFace closes when the console is closed (Windows specific)
+    try:
+        import win32api
+        def console_ctrl_handler(ctrl_type):
+            cleanup()
+            return True
+        win32api.SetConsoleCtrlHandler(console_ctrl_handler, True)
+    except ImportError:
+        pass
 
     # Start VSeeFace in BACKGROUND (don't block startup)
     vseeface_thread = threading.Thread(target=start_vseeface, daemon=True)

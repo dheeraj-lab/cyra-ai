@@ -71,7 +71,10 @@ def get_mood_context():
     context = f"Tera current mood: {mood} (score: {score}/100). "
     
     if mood == "sad":
-        context += "Tu thodi sad hai kyunki Dheeraj ne zyada baat nahi ki. "
+        from modules.config import get
+        owner = get("owner", "User")
+        context += f"Tu thodi sad hai kyunki {owner} ne zyada baat nahi ki. "
+
     elif mood == "bored":
         context += "Tu thodi bored hai — kuch interesting karna chahti hai. "
     elif mood == "excited":

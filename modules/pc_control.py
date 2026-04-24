@@ -69,57 +69,60 @@ def pc_control(action):
     }
 
     action_messages = {
-        "show_desktop": "Desktop show kar diya!",
-        "minimize_all": "Sab windows minimize kar diye!",
-        "peek_desktop": "Desktop peek kar rahi hoon!",
-        "maximize": "Window maximize kar diya!",
-        "minimize": "Window minimize kar diya!",
-        "snap_left": "Window left snap kar diya!",
-        "snap_right": "Window right snap kar diya!",
-        "move_monitor_left": "Window left monitor pe move kar diya!",
-        "move_monitor_right": "Window right monitor pe move kar diya!",
-        "task_manager": "Task Manager khol diya!",
-        "task_view": "Task View khol diya!",
-        "file_explorer": "File Explorer khol diya!",
-        "settings": "Settings khol di!",
-        "search": "Search khol diya!",
-        "run": "Run dialog khol diya!",
-        "quick_settings": "Quick Settings khol di!",
-        "clipboard_history": "Clipboard history khol di!",
-        "undo": "Undo kar diya!",
-        "redo": "Redo kar diya!",
-        "copy": "Copy kar diya!",
-        "paste": "Paste kar diya!",
-        "cut": "Cut kar diya!",
-        "lock_screen": "Screen lock kar diya!",
-        "project_screen": "Project screen khol diya!",
-        "new_folder": "Naya folder banaya!",
-        "rename": "Rename mode on!",
-        "refresh": "Refresh kar diya!",
-        "properties": "Properties khol di!",
-        "switch_apps": "Apps switch kar rahi hoon!",
-        "new_virtual_desktop": "Naya virtual desktop banaya!",
-        "next_desktop": "Next desktop pe gayi!",
-        "prev_desktop": "Previous desktop pe gayi!",
-        "close_virtual_desktop": "Virtual desktop band kar diya!",
-        "parent_folder": "Parent folder pe gayi!",
-        "taskbar_1": "Taskbar app 1 open kar diya!",
-        "taskbar_2": "Taskbar app 2 open kar diya!",
-        "taskbar_3": "Taskbar app 3 open kar diya!",
-        "taskbar_4": "Taskbar app 4 open kar diya!",
-        "taskbar_5": "Taskbar app 5 open kar diya!",
-        "scroll_up": "Upar scroll kar diya! ⬆️",
-        "scroll_down": "Neeche scroll kar diya! ⬇️",
-        "close": "Window band kar di! ❌",
+        "show_desktop": "Showing desktop!",
+        "minimize_all": "Minimizing all windows!",
+        "peek_desktop": "Peeking at desktop!",
+        "maximize": "Window maximized!",
+        "minimize": "Window minimized!",
+        "snap_left": "Snapped window to left!",
+        "snap_right": "Snapped window to right!",
+        "move_monitor_left": "Moved window to left monitor!",
+        "move_monitor_right": "Moved window to right monitor!",
+        "task_manager": "Opening Task Manager!",
+        "task_view": "Opening Task View!",
+        "file_explorer": "Opening File Explorer!",
+        "settings": "Opening Settings!",
+        "search": "Opening Search!",
+        "run": "Opening Run dialog!",
+        "quick_settings": "Opening Quick Settings!",
+        "clipboard_history": "Opening clipboard history!",
+        "undo": "Undone!",
+        "redo": "Redone!",
+        "copy": "Copied to clipboard!",
+        "paste": "Pasted!",
+        "cut": "Cut to clipboard!",
+        "lock_screen": "Locking screen!",
+        "project_screen": "Opening project settings!",
+        "new_folder": "New folder created!",
+        "rename": "Rename mode enabled!",
+        "refresh": "Refreshed!",
+        "properties": "Opening properties!",
+        "switch_apps": "Switching apps!",
+        "new_virtual_desktop": "New virtual desktop created!",
+        "next_desktop": "Switched to next desktop!",
+        "prev_desktop": "Switched to previous desktop!",
+        "close_virtual_desktop": "Virtual desktop closed!",
+        "parent_folder": "Navigating to parent folder!",
+        "taskbar_1": "Opening taskbar app 1!",
+        "taskbar_2": "Opening taskbar app 2!",
+        "taskbar_3": "Opening taskbar app 3!",
+        "taskbar_4": "Opening taskbar app 4!",
+        "taskbar_5": "Opening taskbar app 5!",
+        "scroll_up": "Scrolled up! ⬆️",
+        "scroll_down": "Scrolled down! ⬇️",
+        "close": "Window closed! ❌",
     }
+
 
     try:
         if action in actions:
             actions[action]()
             time.sleep(0.3)
-            return action_messages.get(action, f"{action} kar diya!")
+            return action_messages.get(action, f"Action '{action}' completed!")
+
         else:
-            return f"Action '{action}' nahi pata!"
+            return f"I don't know the action '{action}'!"
+
     except Exception as e:
         return f"Error: {str(e)}"
 
@@ -134,14 +137,18 @@ def maximize_window(title=None):
                     win.restore()
                 win.maximize()
                 win.activate()
-                return f"'{title}' window maximize kar di! ✨"
+                return f"Maximized '{title}' window! ✨"
+
             else:
-                return f"'{title}' naam ki koi window nahi mili!"
+                return f"Could not find a window named '{title}'!"
+
         else:
             pyautogui.hotkey("win", "up")
-            return "Active window maximize kar di! ✨"
+            return "Maximized active window! ✨"
+
     except Exception as e:
-        return f"Maximize karne mein error: {str(e)}"
+        return f"Error maximizing: {str(e)}"
+
 
 def close_window(title=None):
     """Close a specific window by title or the active one."""
@@ -151,25 +158,31 @@ def close_window(title=None):
             if windows:
                 win = windows[0]
                 win.close()
-                return f"'{title}' window band kar di! ❌"
+                return f"Closed '{title}' window! ❌"
+
             else:
-                return f"'{title}' naam ki koi window nahi mili!"
+                return f"Could not find a window named '{title}'!"
+
         else:
             pyautogui.hotkey("alt", "f4")
-            return "Active window band kar di! ❌"
+            return "Closed active window! ❌"
+
     except Exception as e:
-        return f"Close karne mein error: {str(e)}"
+        return f"Error closing: {str(e)}"
+
 
 def set_wallpaper(image_path):
     """Set Windows desktop wallpaper."""
     if not os.path.exists(image_path):
-        return f"File nahi mili: {image_path}"
+        return f"File not found: {image_path}"
+
     
     try:
         # SPI_SETDESKWALLPAPER = 0x0014
         # SPIF_UPDATEINIFILE = 0x01
         # SPIF_SENDWININICHANGE = 0x02
         ctypes.windll.user32.SystemParametersInfoW(0x0014, 0, image_path, 0x01 | 0x02)
-        return "Wallpaper change kar diya! Kaisa lag raha hai? ✨"
+        return "Wallpaper updated! How does it look? ✨"
+
     except Exception as e:
-        return f"Wallpaper change nahi hua: {str(e)}"
+        return f"Could not change wallpaper: {str(e)}"
