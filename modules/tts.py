@@ -70,13 +70,21 @@ async def _edge_tts_generate(text, emotion="neutral"):
     await communicate.save(tmp_path)
     return tmp_path
 
-# ==================== Kokoro (Offline Fallback) ====================
+# Lazy-load kokoro to reduce startup time
+_kokoro_pipeline = None
+_kokoro_loaded = False
 
-try:
-    import kokoro as kokoro_lib
-    kokoro_pipeline = kokoro_lib.KPipeline(lang_code="a")
-except:
-    kokoro_pipeline = None
+def _get_kokoro():
+    global _kokoro_pipeline, _kokoro_loaded
+    if not _kokoro_loaded:
+        try:
+            import kokoro as kokoro_lib
+            _kokoro_pipeline = kokoro_lib.KPipeline(lang_code="a")
+            print("[TTS] Kokoro loaded (offline fallback ready).")
+        except:
+            _kokoro_pipeline = None
+        _kokoro_loaded = True
+    return _kokoro_pipeline
 
 KOKORO_VOICE_MAP = {
     "neutral":   ("af_bella", 1.0),
@@ -91,6 +99,16 @@ KOKORO_VOICE_MAP = {
 
 # ==================== Audio Playback ====================
 
+import threading as _tts_threading
+
+_speaking = False
+_speaking_lock = _tts_threading.Lock()
+_interrupted = False
+
+def is_speaking():
+    """Check if Cyra is currently speaking (used by STT to avoid self-trigger)."""
+    return _speaking
+
 def get_cable_device():
     """Find VB-Cable virtual audio device for avatar lip sync."""
     try:
@@ -104,23 +122,49 @@ def get_cable_device():
 
 def stop_speaking():
     """Immediately stop any current audio playback."""
+    global _speaking, _interrupted
     try:
+        _interrupted = True
         sd.stop()
-        print("[TTS] Stopped speaking.")
+        _speaking = False
+        print("[TTS] Interrupted!")
     except:
         pass
 
 def play_audio(data, samplerate):
-    """Play audio — routes to CABLE if available for VSeeFace."""
+    """Play audio — routes to CABLE if available for VSeeFace. Uses polling for instant interrupt."""
+    global _speaking, _interrupted
+    _interrupted = False
     cable = get_cable_device()
     try:
+        with _speaking_lock:
+            _speaking = True
         if cable is not None:
             sd.play(data, samplerate, device=cable)
         else:
             sd.play(data, samplerate)
-        sd.wait()
+        # Poll instead of sd.wait() so we can be interrupted instantly
+        import time as _time
+        # Calculate expected duration as safety timeout
+        max_wait = len(data) / samplerate + 2.0  # audio length + 2s buffer
+        start_t = _time.time()
+        while (_time.time() - start_t) < max_wait:
+            if _interrupted:
+                sd.stop()
+                break
+            try:
+                stream = sd.get_stream()
+                if stream is None or not stream.active:
+                    break
+            except Exception:
+                break
+            _time.sleep(0.05)  # 50ms polling = near-instant interrupt
     except Exception as e:
-        print(f"[TTS] Playback error: {e}")
+        if not _interrupted:
+            print(f"[TTS] Playback error: {e}")
+    finally:
+        _speaking = False
+        _interrupted = False
 
 # ==================== Main Speak Function ====================
 
@@ -204,10 +248,13 @@ def speak_edge(text, emotion):
         return False
 
 def speak_kokoro(text, emotion):
-    """Speak using kokoro — offline fallback."""
+    """Speak using kokoro — offline fallback (lazy loaded)."""
     try:
+        pipeline = _get_kokoro()
+        if not pipeline:
+            return False
         voice, speed = KOKORO_VOICE_MAP.get(emotion, ("af_bella", 1.0))
-        generator = kokoro_pipeline(
+        generator = pipeline(
             text,
             voice=f"kokoro_model/voices/{voice}.pt",
             speed=speed
@@ -235,6 +282,5 @@ def speak(text, emotion="neutral"):
     if success:
         return
 
-    # 3. Fallback to kokoro (offline)
-    if kokoro_pipeline:
-        speak_kokoro(text, emotion)
+    # 3. Fallback to kokoro (offline, lazy loaded)
+    speak_kokoro(text, emotion)

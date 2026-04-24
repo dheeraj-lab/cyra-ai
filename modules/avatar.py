@@ -47,20 +47,25 @@ def set_expression(emotion="neutral"):
         
         # Trigger excitement bounce if happy/excited!
         if emotion in ["happy", "excited"]:
-            excitement_timer = 1.5 # 1.5 seconds of rapid bouncing
+            excitement_timer = 1.5
             
         if expr == current_expression:
             return True
+        
+        old_expr = current_expression
             
-        # Smooth transition: fade out old, fade in new (Max intensity 0.6)
-        for i in range(10):
-            progress = (i + 1) / 10.0
-            for e in ALL_EXPRESSIONS:
-                if e != expr:
-                    client.send_message("/VMC/Ext/Blend/Val", [e, 0.6 * (1.0 - progress)])
-            client.send_message("/VMC/Ext/Blend/Val", [expr, 0.6 * progress])
+        # Smooth transition: only fade OUT the old expression, fade IN the new one
+        steps = 15  # More steps = smoother
+        for i in range(steps):
+            progress = (i + 1) / float(steps)
+            # Fade out ONLY the previous expression (not all)
+            if old_expr != "Neutral":
+                client.send_message("/VMC/Ext/Blend/Val", [old_expr, 0.6 * (1.0 - progress)])
+            # Fade in the new expression
+            if expr != "Neutral":
+                client.send_message("/VMC/Ext/Blend/Val", [expr, 0.6 * progress])
             client.send_message("/VMC/Ext/Blend/Apply", [])
-            time.sleep(0.03)
+            time.sleep(0.025)
             
         current_expression = expr
         return True
@@ -68,7 +73,11 @@ def set_expression(emotion="neutral"):
         return False
 
 def reset_expression():
-    set_expression("neutral")
+    """Gradually fade back to neutral after a short delay (prevents glitch)."""
+    def _delayed_reset():
+        time.sleep(0.3)  # Small delay after speech ends
+        set_expression("neutral")
+    threading.Thread(target=_delayed_reset, daemon=True).start()
 
 def idle_animation():
     global idle_running, is_sleeping, excitement_timer

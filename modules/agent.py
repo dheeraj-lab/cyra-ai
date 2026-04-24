@@ -651,7 +651,7 @@ def handle_action(action, params=None):
         "daily_briefing": lambda _: daily_briefing(),
         
         # --- Advanced Enhancements ---
-        "translate": lambda p: __import__("googletrans", fromlist=["Translator"]).Translator().translate(p, dest='en').text,
+        "translate": lambda p: __import__("deep_translator", fromlist=["GoogleTranslator"]).GoogleTranslator(source='auto', target='en').translate(p),
         "type_text": lambda p: (__import__("pyperclip").copy(p), __import__("pyautogui").hotkey("ctrl", "v")) and f"Typed: {p}",
         "add_expense": lambda p: __import__("modules.finance", fromlist=["add_expense"]).add_expense(*(p.split("|") + ["general"])[:2]),
         "get_finance": lambda _: __import__("modules.finance", fromlist=["get_finance_report"]).get_finance_report(),
