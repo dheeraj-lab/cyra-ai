@@ -111,7 +111,7 @@ def idle_animation():
             client.send_message("/VMC/Ext/Bone/Pos",
                 ["Head", 0.0, 0.0, 0.0, cy*sp, sy*cp, -sy*sp, cy*cp])
 
-            # 2. Natural Body Animation + Isolated Boob Wiggle
+            # 2. Natural Body Animation 
             
             # Slow, natural breathing on Spine and Chest
             breath = math.sin(t * 1.5) * 0.008
@@ -128,7 +128,7 @@ def idle_animation():
             client.send_message("/VMC/Ext/Bone/Pos",
                 ["Chest", 0.0, final_breath * 0.5, 0.0, sp_chest, 0.0, 0.0, cp_chest])
                 
-            # Isolated Boob Wiggle (Targets VRM SpringBones directly without moving torso)
+            # Isolated Wiggle (Targets VRM SpringBones directly without moving torso)
             wiggle = math.sin(t * 16.0) * 0.05 + math.sin(t * 10.0) * 0.03
             wiggle_pitch = wiggle * (1.0 - sleep_weight)
             sp_bust = math.sin(wiggle_pitch / 2.0)
@@ -182,7 +182,7 @@ def idle_animation():
             global current_anim, anim_timer
             anim_timer += 0.033
             
-            # Default Sexy/Relaxed Pose
+            # Default Relaxed Pose
             left_up = [0.05, 0.0, 0.6, 0.8]
             right_up = [0.05, 0.0, -0.6, 0.8]
             left_low = [0.0, -0.3, 0.0, 0.95]
